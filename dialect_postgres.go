@@ -93,7 +93,8 @@ func (s *postgres) DataTypeOf(field *StructField) string {
 
 func (s postgres) HasIndex(tableName string, indexName string) bool {
 	var count int
-	s.db.QueryRow("SELECT count(*) FROM pg_indexes WHERE tablename = $1 AND indexname = $2 AND schemaname = CURRENT_SCHEMA()", tableName, indexName).Scan(&count)
+	tableName, schemaName := withSchema(tableName)
+	s.db.QueryRow("SELECT count(*) FROM pg_indexes WHERE tablename = $1 AND indexname = $2 AND schemaname = COALESCE($3, CURRENT_SCHEMA())", tableName, indexName, schemaName).Scan(&count)
 	return count > 0
 }
 
@@ -105,13 +106,15 @@ func (s postgres) HasForeignKey(tableName string, foreignKeyName string) bool {
 
 func (s postgres) HasTable(tableName string) bool {
 	var count int
-	s.db.QueryRow("SELECT count(*) FROM INFORMATION_SCHEMA.tables WHERE table_name = $1 AND table_type = 'BASE TABLE' AND table_schema = CURRENT_SCHEMA()", tableName).Scan(&count)
+	tableName, schemaName := withSchema(tableName)
+	s.db.QueryRow("SELECT count(*) FROM INFORMATION_SCHEMA.tables WHERE table_name = $1 AND table_type = 'BASE TABLE' AND table_schema = COALESCE($2, CURRENT_SCHEMA())", tableName, schemaName).Scan(&count)
 	return count > 0
 }
 
 func (s postgres) HasColumn(tableName string, columnName string) bool {
 	var count int
-	s.db.QueryRow("SELECT count(*) FROM INFORMATION_SCHEMA.columns WHERE table_name = $1 AND column_name = $2 AND table_schema = CURRENT_SCHEMA()", tableName, columnName).Scan(&count)
+	tableName, schemaName := withSchema(tableName)
+	s.db.QueryRow("SELECT count(*) FROM INFORMATION_SCHEMA.columns WHERE table_name = $1 AND column_name = $2 AND table_schema = COALESCE($3, CURRENT_SCHEMA())", tableName, columnName, schemaName).Scan(&count)
 	return count > 0
 }
 
@@ -140,4 +143,11 @@ func isUUID(value reflect.Value) bool {
 func isJSON(value reflect.Value) bool {
 	_, ok := value.Interface().(json.RawMessage)
 	return ok
+}
+
+func withSchema(table string) (string, *string) {
+	if parts := strings.SplitN(table, ".", 2); len(parts) == 2 {
+		return parts[1], &parts[0]
+	}
+	return table, nil
 }
